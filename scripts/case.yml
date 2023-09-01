@@ -1,0 +1,9 @@
+case-tool: mo-tester
+circle-times: 10
+case-interval: 1
+tool-interval: 1
+path: /root/matrixone/test/distributed/cases
+ip: 127.0.0.1
+port: 6501
+user: dump
+pwd: 111

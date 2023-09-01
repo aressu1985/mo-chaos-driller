@@ -1,0 +1,19 @@
+jdbc:
+  database:
+    default: test
+  driver: com.mysql.cj.jdbc.Driver
+  paremeter:
+    alwaysSendSetIsolation: 'false'
+    characterSetResults: utf8
+    continueBatchOnError: 'false'
+    failoverReadOnly: 'false'
+    serverTimezone: Asia/Shanghai
+    socketTimeout: 30000
+    useLocalSessionState: 'true'
+    useServerPrepStmts: 'true'
+    zeroDateTimeBehavior: CONVERT_TO_NULL
+  server:
+  - addr: 147:389
+user:
+  name: uu
+  password: '9327429'

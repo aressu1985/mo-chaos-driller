@@ -6,14 +6,25 @@ from Logger import Logger
 
 
 def run_chaosmesh(apply, describe, result, times=1):    
-    interval = 5  
-    process_apply = subprocess.Popen(apply, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True) 
-    data_apply, error_apply = process_apply.communicate()
-    result.logger.info(data_apply.strip())
-    if error_apply != '':
-        result.logger.error(error_apply)
-
+    interval = 10  
+    
     for i in range(1, times+1):
+        process_apply = subprocess.Popen(apply, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True) 
+        data_apply, error_apply = process_apply.communicate()
+        if i == 1:
+            prompt = "1st chaos: \n"
+        elif i == 2:
+            prompt = "2nd chaos: \n"
+        elif i == 3:
+            prompt = "3rd case tests: \n"
+        else:
+            prompt = "{}th case tests: \n".format(i)
+
+        result.logger.info(prompt)
+        result.logger.info(data_apply.strip())
+        if error_apply != '':
+            result.logger.error(error_apply)
+
         process_result = subprocess.Popen(describe, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True) 
         des_data, des_error = process_result.communicate()
 
@@ -23,13 +34,20 @@ def run_chaosmesh(apply, describe, result, times=1):
         if des_error != '':
             result.logger.error(des_error)
 
+        process_terminate = subprocess.Popen("kubectl delete podchaos pod-failure-example -n chaos-mesh", stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True) 
+        data_terminate, error_terminate = process_terminate.communicate()
+        result.logger.info(data_terminate.strip())
+        if error_terminate != '':
+            result.logger.error(error_terminate)
+
         if i < times:
             time.sleep(interval)
 
 
 def get_extracted(data):
     first_seg = get_segment(data, "Name:", "Labels:")
-    second_seg = get_segment(data, "Status:", "Events:")
+    start = data.index("Status:")
+    second_seg = data[start:]
     extracted = "{}\n{}".format(first_seg, second_seg)
     return extracted
 
@@ -43,7 +61,8 @@ def get_segment(data, start, end):
 
 
 def execute_both(apply, describe, case_command, conf, result, report):
-    times = (conf["circle-times"] * conf["case-interval"] - conf["tool-interval"])//5
+    interval = 10
+    times = (conf["case-times"]*32+conf["case-times"]*conf["case-interval"])//interval
 
     process_case = multiprocessing.Process(target=run_case_tool, args=(conf, case_command, result, report))
 
@@ -54,7 +73,7 @@ def execute_both(apply, describe, case_command, conf, result, report):
    
 
     process_case.start()
-    time.sleep(conf["tool-interval"])
+    time.sleep(conf["case-interval"])
 
     process_chaosmesh.start()
 
@@ -62,90 +81,17 @@ def execute_both(apply, describe, case_command, conf, result, report):
     process_chaosmesh.join()
 
 
-
-
-
-
-def preparation(tool, addr):
+def preparation(tool):
     if tool == 'mo-tester':
         prepare_tester()
-    elif tool == 'mo-tpch':
-        prepare_tpch(addr)
-    elif tool == 'mo-tpcc':
-        prepare_tpcc()
     else:
         print('Error')
         exit(0)
 
 
 def prepare_tester():
-    
-    """tp_cn_0_pod=$(kubectl -n mo-chaos get pod -l matrixorigin.io/component=CNSet -o wide| awk 'NR==2 {print $1}')
-    kubectl exec -it $tp_cn_0_pod -n mo-chaos -- /bin/sh<<EOF
-    apt-get update
-    apt-get install git vim net-tools mysql-client openjdk-8-jdk -y
-    git clone https://github.com/matrixorigin/matrixone.git
+    subprocess.Popen("kubectl -n mo-chaos get pod  -l matrixorigin.io/component=CNSet -o wide | awk 'NR==2 {print $1}'", stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True) 
+    subprocess.Popen("kubectl -n mo-chaos get pod  -l matrixorigin.io/component=CNSet -o wide | awk 'NR==3 {print $1}'", stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True) 
+    subprocess.Popen("kubectl -n mo-chaos get pod  -l matrixorigin.io/component=CNSet -o wide | awk 'NR==4 {print $1}'", stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True) 
 
     
-    tp_cn_1_pod=(kubectl -n mo-chaos get pod -l matrixorigin.io/component=CNSet -o wide| awk 'NR==3 {print $1}')
-    kubectl exec -it $tp_cn_1_pod -n mo-reg -- /bin/sh<<EOF
-    apt-get update
-    apt-get install git vim net-tools mysql-client openjdk-8-jdk -y
-    git clone https://github.com/matrixorigin/matrixone.git
-    
-    tp_cn_2_pod=(kubectl -n mo-chaos get pod -l matrixorigin.io/component=CNSet -o wide| awk 'NR==4 {print $1}')
-    kubectl exec -it $tp_cn_2_pod -n mo-reg -- /bin/sh<<EOF
-    apt-get update
-    apt-get install git vim net-tools mysql-client openjdk-8-jdk -y
-    git clone https://github.com/matrixorigin/matrixone.git"""
-
-
-    prepare_commands = [
-        
-        
-        
-        
-    ]
-    for command in prepare_commands:
-        subprocess.run(command, shell=True)
-
-
-def prepare_tpch(addr):
-    prepare_commands = [
-        "git clone mo-tpch mo-load-data"
-        "cd mo-load-data && ./load.sh -h {addr} -c cases/00_from_s3/tpch_10 -r -m -g"
-    ]
-    for command in prepare_commands:
-        subprocess.run(command, shell=True)
-
-
-def prepare_tpcc(addr):
-    prepare_commands = [
-        "git clone mo-tpcc mo-load-data"
-        "cd mo-load-data && ./load.sh -h {addr} -c cases/00_from_s3/tpcc_10 -r -m -g"
-        "cd mo-tpcc"
-        "cp props.mo props_10.mo"
-        "sed -i '/.*terminals=*/c\terminals=10' props_10.mo"
-        "sed -i '/.*warehouses=*/c\warehouses=10' props_10.mo"
-        "sed -i 's/tpcc/tpcc_10/g' props_10.mo"
-        "sed -i 's/127.0.0.1/172.20.235.194/g' props_10.mo"
-        "sed -i '/runMins=*/c\runMins=5' props_10.mo"
-    ]
-    for command in prepare_commands:
-        subprocess.run(command, shell=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

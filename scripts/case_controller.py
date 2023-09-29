@@ -1,40 +1,31 @@
 import time
 import subprocess
 from Yaml import Yaml
-import datetime
 import yaml
 from Logger import Logger
 import os
+import re
 
-
-def get_conf(path):
-    case_yaml = Yaml(path)
-    conf = case_yaml.parse_case_yaml()
-    return conf
-
-
-def command_for_case(case_yaml, ip, port, user, pwd):
-    conf = get_conf(case_yaml)
-
+def command_for_case(conf, ip, port, user, pwd):
     case_path = conf["case-path"]
 
     if ip == None:
-        ip = conf['ip']
+        ip = conf['case-ip']
     
     if port == None:
-        port = conf['port']
+        port = conf['case-port']
 
     if user == None:
-        user = conf['user']
+        user = conf['case-user']
     
     if pwd == None:
-        pwd = conf['pwd']
+        pwd = conf['case-pwd']
   
-    if conf['case-tool'] == 'mo-tester':
+    if conf['case-name'] == 'mo-tester':
         command = command_for_tester(case_path, ip, port, user, pwd)
-    elif conf['case-tool'] == 'mo-tpch':
+    elif conf['case-name'] == 'mo-tpch':
         command = command_for_tpch(ip)
-    elif conf['case-tool'] == 'mo-tpcc':
+    elif conf['case-name'] == 'mo-tpcc':
         command = command_for_tpcc()
     else:
         print('Error')
@@ -52,7 +43,7 @@ def command_for_tester(path, ip, port, user, pwd):
     data["user"]["name"] = user
     data["user"]["password"] = pwd    
 
-    with open("../mo-tester/mo.yml", 'w') as file:
+    with open("/root/mo-tester/mo.yml", 'w') as file:
         yaml.dump(data, file)
 
     command = "./run.sh -n {} -m run -g".format(path)
@@ -69,12 +60,11 @@ def command_for_tpcc():
     return command
 
 
-def run_case_tool(conf, command, result, report):
-    times = conf["circle-times"]
-    interval = conf["case-interval"]
-    log_folder = "error"
+def run_case_tool(conf, command, log, report):
+    times = conf["case-times"]
+    error_folder = "error"
     try:
-        os.makedirs(log_folder)
+        os.makedirs(error_folder)
     except OSError:
         pass
 
@@ -95,21 +85,27 @@ def run_case_tool(conf, command, result, report):
             else:
                 report_content = "The result of the {}th case tests: \n{}".format(i, report_content)
 
-            time_stamp = str(datetime.datetime.now().strftime("%Y%m%d%H%M%S"))
-            error_file = "error{}.txt".format(time_stamp)
-            copy_command = "cp /root/mo-tester/report/error.txt /root/chaos_injection_tool/error/{}".format(error_file)
-            subprocess.Popen(copy_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)  
-
-            error_path = "The path for error.txt: /root/chaos_injection_tool/error/{}".format(error_file)
-
-            result.logger.info(report_content)
-            result.logger.info(error_path)
-            report.logger.info(report_content)
-            report.logger.info(error_path)
+            log.logger.info(report_content)
+            
+            fail_or_not(report_content, i, log, report)
+                       
+            
         except IOError:
-            result.logger.error("There is something wrong with case tests:\n{}".format(stderr.strip()))
+            log.logger.error("There is something wrong with case tests:\n{}".format(stderr.strip()))
         
-        if i < times:
-            time.sleep(interval)
+    os.chdir("/root/chaos_injection_tool")
     
-    subprocess.Popen("cd ../chaos_injection_tool/", stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+
+def fail_or_not(content, i, log, report):
+    matches = re.findall(r'FAILED :.', content)
+    fail = matches[0]
+    num = fail[len(fail)-1]
+    if int(num) > 0:
+        error_file = "{}th_error.txt".format(i)
+        copy_command = "cp /root/mo-tester/report/error.txt /root/chaos_injection_tool/error/{}".format(error_file)
+        subprocess.Popen(copy_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)  
+        error_path = "The path for error.txt: /root/chaos_injection_tool/error/{}".format(error_file)
+
+        log.logger.info(error_path)
+        report.logger.info(content)
+        report.logger.info(error_path)
